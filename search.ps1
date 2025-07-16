@@ -4,7 +4,7 @@ $inputFile = "C:\Путь\К\input.txt"            # Файл со строка�
 $outputCsv = "C:\Путь\К\results.csv"          # Файл для вывода CSV
 
 # === ЗАПУСК ТАЙМЕРА ===
-$startTime = Get-Date
+$startTime = Get-Date 
 
 # === ЧТЕНИЕ СТРОК ДЛЯ ПОИСКА ===
 if (!(Test-Path $inputFile)) {
