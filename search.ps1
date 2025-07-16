@@ -1,9 +1,12 @@
 # === НАСТРОЙКИ ===
-$folderPath = "C:\Путь\К\Папке"               # Путь к папке с Excel-файлами
+$folderPath = "C:\Путь\К\Папке"               # Папка с Excel-файлами
 $inputFile = "C:\Путь\К\input.txt"            # Файл со строками для поиска
-$outputCsv = "C:\Путь\К\results.csv"          # Файл для CSV-результатов
+$outputCsv = "C:\Путь\К\results.csv"          # Результат CSV
 
-# === ПОДГОТОВКА ===
+# === ЗАПУСК ТАЙМЕРА ===
+$startTime = Get-Date
+
+# === ЧТЕНИЕ СТРОК ПОИСКА ===
 if (!(Test-Path $inputFile)) {
     Write-Error "Файл со строками поиска не найден: $inputFile"
     exit
@@ -19,18 +22,25 @@ if ($searchValues.Count -eq 0) {
     exit
 }
 
-# Создаем таблицу для хранения результатов
+# === ПОДГОТОВКА ===
+$excelFiles = Get-ChildItem -Path $folderPath -Recurse -Include *.xlsx, *.xls -File
+$totalFiles = $excelFiles.Count
+$fileIndex = 0
 $results = @()
 
-# Получаем список Excel-файлов
-$excelFiles = Get-ChildItem -Path $folderPath -Recurse -Include *.xlsx, *.xls -File
-
-# Запускаем Excel COM
+# === ИНИЦИАЛИЗАЦИЯ EXCEL ===
 $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false
 $excel.DisplayAlerts = $false
 
 foreach ($file in $excelFiles) {
+    $fileIndex++
+    $progressPercent = [int](($fileIndex / $totalFiles) * 100)
+
+    Write-Progress -Activity "Обработка Excel-файлов..." `
+                   -Status "Файл $fileIndex из $totalFiles: $($file.Name)" `
+                   -PercentComplete $progressPercent
+
     try {
         $workbook = $excel.Workbooks.Open($file.FullName, $null, $true)  # read-only
 
@@ -51,6 +61,8 @@ foreach ($file in $excelFiles) {
                 $rowNormalized = ($rowText -replace "ё", "е" -replace "Ё", "Е").ToLower()
 
                 foreach ($searchValue in $searchValues) {
+                    Write-Host "Поиск по строке: '$searchValue'" -ForegroundColor Cyan
+
                     if ($rowNormalized -like "*$searchValue*") {
                         $results += [pscustomobject]@{
                             Файл              = $file.FullName
@@ -73,13 +85,18 @@ foreach ($file in $excelFiles) {
     }
 }
 
-# Завершаем работу Excel
+# === ЗАВЕРШЕНИЕ ===
 $excel.Quit()
 [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
 [GC]::Collect()
 [GC]::WaitForPendingFinalizers()
 
-# Сохраняем в CSV
+# === СОХРАНЕНИЕ В CSV ===
 $results | Export-Csv -Path $outputCsv -NoTypeInformation -Encoding UTF8
 
-Write-Host "`nПоиск завершён. Результаты сохранены в файл: $outputCsv"
+# === ВЫВОД ВРЕМЕНИ ВЫПОЛНЕНИЯ ===
+$endTime = Get-Date
+$duration = $endTime - $startTime
+Write-Host "`nПоиск завершён. Найдено: $($results.Count) совпадений."
+Write-Host "Результаты сохранены в файл: $outputCsv"
+Write-Host "Общее время выполнения: $($duration.ToString())"
