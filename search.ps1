@@ -1,7 +1,7 @@
 # === НАСТРОЙКИ ===
 $folderPath = "C:\Путь\К\Папке"               # Путь к папке с Excel-файлами
-$inputFile = "C:\Путь\К\input.txt"            # Путь к файлу со строками для поиска
-$outputFile = "C:\Путь\К\results.txt"         # Путь к файлу для вывода результатов
+$inputFile = "C:\Путь\К\input.txt"            # Файл со строками для поиска
+$outputCsv = "C:\Путь\К\results.csv"          # Файл для CSV-результатов
 
 # === ПОДГОТОВКА ===
 if (!(Test-Path $inputFile)) {
@@ -9,15 +9,18 @@ if (!(Test-Path $inputFile)) {
     exit
 }
 
-$searchValues = Get-Content -Path $inputFile | Where-Object { $_.Trim() -ne "" }
+$searchValuesRaw = Get-Content -Path $inputFile | Where-Object { $_.Trim() -ne "" }
+$searchValues = $searchValuesRaw | ForEach-Object {
+    ($_ -replace "ё", "е" -replace "Ё", "Е").ToLower()
+}
 
 if ($searchValues.Count -eq 0) {
     Write-Error "Файл '$inputFile' не содержит строк для поиска."
     exit
 }
 
-"Результаты поиска (дата: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))" | Out-File -FilePath $outputFile -Encoding UTF8
-"" | Out-File -FilePath $outputFile -Append
+# Создаем таблицу для хранения результатов
+$results = @()
 
 # Получаем список Excel-файлов
 $excelFiles = Get-ChildItem -Path $folderPath -Recurse -Include *.xlsx, *.xls -File
@@ -45,18 +48,19 @@ foreach ($file in $excelFiles) {
                     }
                 }
 
+                $rowNormalized = ($rowText -replace "ё", "е" -replace "Ё", "Е").ToLower()
+
                 foreach ($searchValue in $searchValues) {
-                    if ($rowText -like "*$searchValue*") {
-                        $result = @"
-Файл: $($file.FullName)
-Дата создания: $($file.CreationTime)
-Дата изменения: $($file.LastWriteTime)
-Лист: $($sheet.Name), Строка: $row
-Найдено: '$searchValue'
-Содержимое строки: $rowText
---------------------------------------------------------------------------------
-"@
-                        $result | Out-File -FilePath $outputFile -Append -Encoding UTF8
+                    if ($rowNormalized -like "*$searchValue*") {
+                        $results += [pscustomobject]@{
+                            Файл              = $file.FullName
+                            ДатаСоздания      = $file.CreationTime
+                            ДатаИзменения     = $file.LastWriteTime
+                            Лист              = $sheet.Name
+                            НомерСтроки       = $row
+                            Найдено           = $searchValue
+                            СодержимоеСтроки  = $rowText.Trim()
+                        }
                         break
                     }
                 }
@@ -75,4 +79,7 @@ $excel.Quit()
 [GC]::Collect()
 [GC]::WaitForPendingFinalizers()
 
-Write-Host "`nПоиск завершён. Результаты сохранены в файл: $outputFile"
+# Сохраняем в CSV
+$results | Export-Csv -Path $outputCsv -NoTypeInformation -Encoding UTF8
+
+Write-Host "`nПоиск завершён. Результаты сохранены в файл: $outputCsv"
